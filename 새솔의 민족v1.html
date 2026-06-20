@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>특수학교 실습용 주문 시스템</title>
+    <style>
+        /* 기본 스타일 리셋 및 폰트 설정 */
+        * { box-sizing: border-box; font-family: 'Malgun Gothic', sans-serif; margin: 0; padding: 0; }
+        body { background-color: #f5f5f5; padding: 20px; }
+        h1 { text-align: center; margin-bottom: 20px; color: #333; }
+
+        /* 화면을 반으로 나누는 컨테이너 */
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; height: 85vh; }
+        .screen { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        .screen-title { font-size: 24px; font-weight: bold; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 3px solid #333; text-align: center; }
+
+        /* [왼쪽] 매장 주문 화면 스타일 */
+        .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; overflow-y: auto; flex: 1; }
+        .menu-card { border: 2px solid #ddd; border-radius: 8px; padding: 15px; text-align: center; cursor: pointer; transition: 0.2s; background: #fff; }
+        .menu-card:hover { border-color: #2ac1bc; background-color: #f0faf9; }
+        .menu-name { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+        .menu-price { color: #666; font-size: 16px; margin-bottom: 10px; }
+        .order-btn { background: #2ac1bc; color: white; border: none; padding: 8px 15px; font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; width: 100%; }
+
+        /* [오른쪽] 주방 화면 스타일 */
+        .order-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .order-card { background: #fff3cd; border: 2px solid #ffeeba; border-radius: 8px; padding: 15px; display: flex; justify-content: space-between; align-items: center; animation: fadeIn 0.3s ease; }
+        .order-info h3 { font-size: 20px; color: #856404; }
+        .order-info p { color: #666; margin-top: 5px; }
+        .complete-btn { background: #dc3545; color: white; border: none; padding: 10px 20px; font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <h1>☕ 특수학교 맞춤형 카페 실습 시스템</h1>
+
+    <div class="container">
+        <div class="screen">
+            <div class="screen-title" style="color: #2ac1bc;">📱 매장 주문 (키오스크)</div>
+            <div class="menu-grid" id="menu-container">
+                </div>
+        </div>
+
+        <div class="screen">
+            <div class="screen-title" style="color: #dc3545;">🍳 주방 대시보드 (판매용)</div>
+            <div class="order-list" id="order-container">
+                </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. 가상의 초기 메뉴 데이터 (나중에 관리자 모드에서 바꿀 수 있게 할 거예요)
+        const menuList = [
+            { id: 1, name: "🧊 아이스 아메리카노", price: "2,500원" },
+            { id: 2, name: "🥛 따뜻한 카페라떼", price: "3,000원" },
+            { id: 3, name: "🍎 상큼한 사과주스", price: "3,500원" },
+            { id: 4, name: "🍫 달콤한 초코쿠키", price: "1,500원" }
+        ];
+
+        // 들어온 주문을 저장할 배열
+        let orders = [];
+        let orderCounter = 1;
+
+        // 2. 화면에 메뉴판 그리기
+        const menuContainer = document.getElementById('menu-container');
+        function renderMenu() {
+            menuContainer.innerHTML = menuList.map(item => `
+                <div class="menu-card">
+                    <div class="menu-name">${item.name}</div>
+                    <div class="menu-price">${item.price}</div>
+                    <button class="order-btn" onclick="placeOrder('${item.name}')">주문하기</button>
+                </div>
+            `).join('');
+        }
+
+        // 3. 주문하기 버튼을 눌렀을 때 실행되는 함수
+        function placeOrder(menuName) {
+            const now = new Date();
+            const timeString = `${now.getHours()}시 ${now.getMinutes()}분`;
+            
+            const newOrder = {
+                id: orderCounter++,
+                name: menuName,
+                time: timeString
+            };
+
+            orders.push(newOrder);
+            renderKitchen(); // 주방 화면 업데이트
+            
+            // 💡 간단한 오디오 피드백 (브라우저 기본 삑 소리)
+            playBeep();
+        }
+
+        // 4. 주방 화면에 주문 목록 그리기 (FIFO: 먼저 들어온 것이 위로)
+        const orderContainer = document.getElementById('order-container');
+        function renderKitchen() {
+            if (orders.length === 0) {
+                orderContainer.innerHTML = '<p style="text-align:center; color:#999; margin-top:20px;">대기 중인 주문이 없습니다.</p>';
+                return;
+            }
+
+            orderContainer.innerHTML = orders.map(order => `
+                <div class="order-card">
+                    <div class="order-info">
+                        <h3>번호: ${order.id}번 주문</h3>
+                        <p><strong>메뉴: ${order.name}</strong></p>
+                        <p style="font-size: 13px;">시간: ${order.time}</p>
+                    </div>
+                    <button class="complete-btn" onclick="completeOrder(${order.id})">제조 완료</button>
+                </div>
+            `).join('');
+        }
+
+        // 5. 주방에서 [제조 완료]를 누르면 주문이 삭제되는 함수
+        function completeOrder(orderId) {
+            orders = orders.filter(order => order.id !== orderId);
+            renderKitchen();
+        }
+
+        // 삑 소리 내는 함수 (학생들 집중용 피드백)
+        function playBeep() {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = context.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, context.currentTime); // A4 음
+            oscillator.connect(context.destination);
+            oscillator.start();
+            oscillator.stop(context.currentTime + 0.1); // 0.1초 동안 작동
+        }
+
+        // 초기 실행
+        renderMenu();
+        renderKitchen();
+    </script>
+</body>
+</html>

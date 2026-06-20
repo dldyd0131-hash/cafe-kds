@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍳 주방 주문 접수대 (KDS)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                            600: '#475569'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-dark-900 text-slate-100 min-h-screen p-4 md:p-6 font-sans relative">
+
+    <!-- 🔊 사운드 배너 -->
+    <div id="audio-notice" class="bg-amber-500 text-white font-bold p-3 text-center rounded-xl mb-4 shadow-md flex items-center justify-center gap-2 animate-pulse cursor-pointer z-[100]" onclick="unlockAudio()">
+        <i class="fa-solid fa-volume-high"></i>
+        <span>[중요] 실시간 주문 소리를 들으시려면 여기 화면을 꼭 '한 번 클릭'해 주세요!</span>
+    </div>
+
+    <!-- 상단 헤더 제어판 -->
+    <header class="bg-dark-800 rounded-2xl p-4 md:p-6 border border-dark-700 shadow-xl mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+            <h1 class="text-2xl font-black tracking-tight flex items-center gap-2 text-white">
+                <span>☕ 카페 주방 시스템 (KDS)</span>
+                <span class="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-md font-bold animate-pulse">LIVE</span>
+            </h1>
+            <p class="text-xs text-slate-400 mt-1">주방에서 만들어야 할 대기 주문만 표시됩니다. 배달은 출발 시, 매장은 제조완료 시 리스트에서 즉시 제외됩니다.</p>
+        </div>
+        
+        <div class="flex flex-wrap items-center gap-3">
+            <button onclick="openHistoryModal()" class="bg-dark-700 hover:bg-dark-600 text-slate-200 font-extrabold text-xs px-4 py-3 rounded-xl border border-dark-600 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+                <span>이전 완료 및 배달내역 확인</span>
+            </button>
+            <div class="flex items-center gap-2.5 bg-dark-900 px-3 py-2 rounded-xl border border-dark-700">
+                <span class="text-xs font-bold text-slate-400">영업 제어:</span>
+                <button id="store-status-btn" onclick="toggleStoreStatus()" class="px-3 py-1.5 rounded-lg font-black text-[11px] transition duration-200 bg-slate-700 text-slate-300">
+                    조회 중...
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 📊 실시간 주문 모니터링 현황판 -->
+    <main class="w-full max-w-5xl mx-auto">
+        <div class="bg-dark-800 rounded-2xl p-5 border border-dark-700 shadow-2xl">
+            <h2 class="text-base font-black text-slate-300 mb-4 flex items-center justify-between border-b border-dark-700 pb-3">
+                <span class="flex items-center gap-2">
+                    <i class="fa-solid fa-fire-burner text-amber-500"></i>
+                    <span>현재 조리 및 제조 대기열</span>
+                </span>
+                <span id="active-counter" class="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-0.5 rounded-full font-black">대기 0건</span>
+            </h2>
+
+            <div id="integrated-orders-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- 파이어베이스 데이터 실시간 바인딩 영역 -->
+            </div>
+        </div>
+    </main>
+
+    <!-- 📋 [모달창] 이전 완료 및 배달중 내역 조회 팝업 -->
+    <div id="history-modal" class="fixed inset-0 bg-black/80 z-[999] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-dark-800 border border-dark-700 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden transform scale-95 transition-all duration-300 flex flex-col max-h-[80vh]">
+            <div class="bg-dark-700 p-4 border-b border-dark-600 text-white flex justify-between items-center">
+                <h3 class="text-base font-black flex items-center gap-2 text-slate-200">
+                    <i class="fa-solid fa-circle-check text-emerald-400"></i>
+                    <span>주방 출고 이후 내역 기록</span>
+                </h3>
+                <button onclick="closeHistoryModal()" class="text-slate-400 hover:text-white text-xl">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="p-5 overflow-y-auto space-y-3 flex-1 bg-dark-900" id="history-orders-list">
+                <!-- 데이터 매핑 -->
+            </div>
+            <div class="p-3 border-t border-dark-700 bg-dark-800 text-center text-[11px] text-slate-500 font-medium">
+                배달중 상태의 주문은 관제탑(배달원) 시스템에서 완료 처리가 진행되면 자동으로 배달완료로 갱신됩니다.
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBVoO2KYyzZEIE-SyySmu3rNzu8AYr3mnk",
+            authDomain: "school-cafe-73253.firebaseapp.com",
+            projectId: "school-cafe-73253",
+            storageBucket: "school-cafe-73253.firebasestorage.app",
+            messagingSenderId: "338045111027",
+            appId: "1:338045111027:web:ab9c11793582bdcdb20586"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // -------------------------------------------------------------
+        // 🔊 사운드 제어 시스템 (내장 주파수 합성 방식의 1.5초 띵동 업그레이드)
+        // -------------------------------------------------------------
+        let audioUnlocked = false;
+        let audioCtx = null;
+        const soundQueue = [];
+        let isProcessingQueue = false;
+        
+        // 배달 전용 알림음 (기존 고유 파일 유지)
+        const deliverySound = new Audio("audio/baedal.mp3");
+
+        window.unlockAudio = function() {
+            audioUnlocked = true;
+            document.getElementById('audio-notice').classList.add('hidden');
+            
+            // 브라우저 실시간 오디오 칩셋 활성화
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            deliverySound.play().then(() => deliverySound.pause()).catch(e => console.log("Bypass"));
+        };
+
+        // 신규 접수 알림 전용 큐 엔진
+        window.queueNotification = function(type) {
+            if (!audioUnlocked) return;
+            soundQueue.push(type);
+            processNextNotification();
+        };
+
+        async function processNextNotification() {
+            if (isProcessingQueue || soundQueue.length === 0) return;
+            isProcessingQueue = true;
+            const nextType = soundQueue.shift();
+
+            if (nextType === "매장") {
+                // 외부 파일 없이 맑은 전자식 '띵~동' 1.2초 재생
+                playDingDongSound();
+                await new Promise(resolve => setTimeout(resolve, 1300)); 
+            } else if (nextType === "배달") {
+                try {
+                    deliverySound.currentTime = 0;
+                    await deliverySound.play();
+                    await new Promise(resolve => setTimeout(resolve, 2500));
+                } catch (e) { console.error(e); }
+            }
+            isProcessingQueue = false;
+            processNextNotification();
+        }
+
+        // 🔔 [신규] 주방용 숏 버전 띵~동 사운드 생성기 (약 1.2초)
+        function playDingDongSound() {
+            if (!audioCtx || !audioUnlocked) return;
+            try {
+                const now = audioCtx.currentTime;
+                
+                // 1단계: '띵' 소리 (주파수 784Hz / 높은 솔)
+                const osc1 = audioCtx.createOscillator();
+                const gain1 = audioCtx.createGain();
+                osc1.type = "sine";
+                osc1.frequency.setValueAtTime(784, now); 
+                gain1.gain.setValueAtTime(0.2, now);
+                gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.4); // 0.4초 동안 띵~ 감쇄
+                osc1.connect(gain1);
+                gain1.connect(audioCtx.destination);
+                osc1.start(now);
+                osc1.stop(now + 0.4);
+
+                // 2단계: '동' 소리 (주파수 659Hz / 높은 미, '띵'이 끝나기 직전인 0.25초 시점에 바톤 터치)
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.type = "sine";
+                osc2.frequency.setValueAtTime(659, now + 0.25);
+                gain2.gain.setValueAtTime(0.2, now + 0.25);
+                gain2.gain.exponentialRampToValueAtTime(0.01, now + 1.1); // 0.85초 동안 동~~ 여운 유지 후 종료
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.start(now + 0.25);
+                osc2.stop(now + 1.1);
+                
+            } catch (e) { console.error("매장 벨소리 생성 실패:", e); }
+        }
+
+        // 🎛️ 완료/출발 버튼용 전자식 숏 비프음 ("삑!")
+        function playBeepSound() {
+            if (!audioCtx || !audioUnlocked) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(1050, audioCtx.currentTime); 
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1); 
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.1);
+            } catch (e) { console.error("비프음 에러:", e); }
+        }
+
+        // 🏪 영업 상태 제어
+        let currentStatus = "closed";
+        const storeStatusBtn = document.getElementById('store-status-btn');
+        onSnapshot(doc(db, "system_status", "store"), (docSnap) => {
+            if(docSnap.exists()) {
+                currentStatus = docSnap.data().status;
+                if(currentStatus === "open") {
+                    storeStatusBtn.innerText = "🟢 영업 중";
+                    storeStatusBtn.className = "px-3 py-1.5 rounded-lg font-black text-[11px] text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm";
+                } else {
+                    storeStatusBtn.innerText = "🔴 준비 중";
+                    storeStatusBtn.className = "px-3 py-1.5 rounded-lg font-black text-[11px] text-white bg-rose-600 hover:bg-rose-700 transition shadow-sm";
+                }
+            }
+        });
+
+        window.toggleStoreStatus = async function() {
+            const nextStatus = currentStatus === "open" ? "closed" : "open";
+            try { await updateDoc(doc(db, "system_status", "store"), { status: nextStatus }); } catch(e) { console.error(e); }
+        };
+
+        // 모달창 제어
+        window.openHistoryModal = function() {
+            const modal = document.getElementById('history-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.firstElementChild.className = modal.firstElementChild.className.replace('scale-95', 'scale-100'), 5);
+        };
+        window.closeHistoryModal = function() {
+            const modal = document.getElementById('history-modal');
+            modal.firstElementChild.className = modal.firstElementChild.className.replace('scale-100', 'scale-95');
+            setTimeout(() => modal.classList.add('hidden'), 150);
+        };
+
+        // 📋 주문 동기화 실시간 리스너
+        let isFirstLoad = true;
+
+        onSnapshot(collection(db, "orders"), (snapshot) => {
+            const allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            const activeOrders = allOrders
+                .filter(order => order.status === "대기")
+                .sort((a, b) => (a.timestamp?.toMillis() || Date.now()) - (b.timestamp?.toMillis() || Date.now()));
+
+            const historyOrders = allOrders
+                .filter(order => order.status === "완료" || order.status === "배달중")
+                .sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+            document.getElementById('active-counter').innerText = `제조 대기 ${activeOrders.length}건`;
+
+            // 신규 주문 실시간 유입 트래킹
+            if (isFirstLoad) {
+                isFirstLoad = false; 
+            } else {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === "added") {
+                        const newOrder = change.doc.data();
+                        if (newOrder.status === "대기") {
+                            if (newOrder.type === "배달") {
+                                window.queueNotification("배달");
+                            } else {
+                                window.queueNotification("매장"); // 👈 새로 바뀐 깔끔한 고품질 1.2초 띵동 작동!
+                            }
+                        }
+                    }
+                });
+            }
+
+            renderMainDashboard(activeOrders);
+            renderHistoryModal(historyOrders);
+        });
+
+        // 주방 메인 대시보드 렌더러
+        function renderMainDashboard(activeOrders) {
+            const container = document.getElementById('integrated-orders-container');
+            if (activeOrders.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-24 text-slate-500 font-bold bg-dark-900 rounded-xl border border-dashed border-dark-700">
+                        <span class="text-4xl block mb-2">🎉</span>
+                        <p class="text-sm">제조 대기 중인 주문이 없습니다.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = activeOrders.map(order => {
+                const timeStr = order.timestamp ? new Date(order.timestamp.toMillis()).toLocaleTimeString('ko-KR', {hour: '2-digit', minute:'2-digit'}) : '방금 전';
+                const isDelivery = order.type === "배달";
+
+                const typeBadge = isDelivery 
+                    ? `<span class="bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded text-[10px] font-black uppercase"><i class="fa-solid fa-motorcycle mr-1"></i>새솔의민족</span>`
+                    : `<span class="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded text-[10px] font-black uppercase"><i class="fa-solid fa-shop mr-1"></i>매장 방문</span>`;
+
+                const controlBtn = isDelivery
+                    ? `<button onclick="changeStatus('${order.id}', '배달중')" class="w-full bg-amber-500 hover:bg-amber-600 text-dark-900 font-black text-xs py-3 rounded-xl transition shadow-lg">🛵 배달원 출발</button>`
+                    : `<button onclick="changeStatus('${order.id}', '완료')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs py-3 rounded-xl transition shadow-lg">🥤 제조완료 출고</button>`;
+
+                return `
+                    <div class="bg-dark-900 rounded-xl border border-dark-700 p-4 flex flex-col justify-between gap-4 transition hover:border-slate-500">
+                        <div class="flex items-start gap-3">
+                            <div class="w-20 h-20 bg-white rounded-lg overflow-hidden flex items-center justify-center border border-dark-700 shrink-0 p-1">
+                                <img src="${order.menuImageUrl || 'https://placehold.co/150?text=No+Image'}" class="w-full h-full object-contain" onerror="this.src='https://placehold.co/150?text=No+Image'">
+                            </div>
+                            <div class="space-y-1 w-full overflow-hidden">
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-amber-400 font-black text-sm">#${order.orderNumber}</span>
+                                        ${typeBadge}
+                                    </div>
+                                    <span class="text-[10px] text-slate-500 font-bold shrink-0">${timeStr}</span>
+                                </div>
+                                <h3 class="text-base font-black text-white truncate">${order.menuName}</h3>
+                                <div class="text-xs text-slate-400 font-medium space-y-0.5">
+                                    <p>👤 주문명: <span class="text-slate-200 font-bold">${order.buyerName || '미입력'}</span></p>
+                                    ${order.deliveryLocation ? `<p class="text-purple-300">📍 배송지: <span class="font-bold border-b border-purple-500/30">${order.deliveryLocation}</span></p>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div>${controlBtn}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 아카이브 이력 팝업 모달창 렌더러
+        function renderHistoryModal(historyOrders) {
+            const container = document.getElementById('history-orders-list');
+            if (historyOrders.length === 0) {
+                container.innerHTML = `<p class="text-center py-12 text-xs text-slate-500 font-bold">출고 처리된 내역이 아직 없습니다.</p>`;
+                return;
+            }
+
+            container.innerHTML = historyOrders.map(order => {
+                const timeStr = order.timestamp ? new Date(order.timestamp.toMillis()).toLocaleTimeString('ko-KR', {hour: '2-digit', minute:'2-digit'}) : '기록없음';
+                
+                let statusBadge = "";
+                if (order.status === "배달중") {
+                    statusBadge = `<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1"><i class="fa-solid fa-motorcycle text-[10px]"></i>배달중 (관제대기)</span>`;
+                } else if (order.status === "완료") {
+                    statusBadge = order.type === "배달" 
+                        ? `<span class="bg-purple-900/40 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded font-bold"><i class="fa-solid fa-house-flag mr-1"></i>배달 완료</span>`
+                        : `<span class="bg-emerald-900/40 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-bold"><i class="fa-solid fa-circle-check mr-1"></i>수령 완료</span>`;
+                }
+
+                return `
+                    <div class="bg-dark-800 rounded-xl p-3 border border-dark-700 flex justify-between items-center text-xs">
+                        <div>
+                            <span class="font-bold text-slate-400 mr-2">#${order.orderNumber}</span>
+                            <span class="font-extrabold text-slate-200">${order.menuName}</span>
+                            <span class="text-[10px] text-slate-500 ml-2">(${order.buyerName || '손님'} / ${order.type})</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <span class="text-[10px] text-slate-500">${timeStr}</span>
+                            ${statusBadge}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 🔄 버튼 클릭 핸들러 (오직 피드백용 삑! 소리만 작동)
+        window.changeStatus = async function(orderId, nextStatus) {
+            try { 
+                playBeepSound(); 
+                await updateDoc(doc(db, "orders", orderId), { status: nextStatus }); 
+            } catch (e) { 
+                console.error("상태 변경 오류:", e); 
+            }
+        };
+    </script>
+</body>
+</html>
